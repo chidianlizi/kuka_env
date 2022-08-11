@@ -10,6 +10,7 @@ import random
 import string
 from random import choice
 import logging
+from collections import deque
 CURRENT_PATH = os.path.abspath(__file__)
 BASE = os.path.dirname(os.path.dirname(CURRENT_PATH)) 
 ROOT = os.path.dirname(BASE) 
@@ -186,6 +187,8 @@ class MySimpleReachEnv(gym.Env):
         self.current_pos = None
         self.current_orn = None
         self.current_joint_position = None
+        self.vel_checker = 0
+        self.past_distance = deque([])
         # parameters for image observation
         # self.WIDTH = 128
         # self.HEIGHT = 128
@@ -286,7 +289,7 @@ class MySimpleReachEnv(gym.Env):
         targets = []
         for i, x in enumerate([-0.25, 0.25]):
             for j, z in enumerate([0.85, 1.35]):        
-                pose = [x+0.1*(np.random.rand()-1), 0.4, z+0.1*(np.random.rand()-1)]
+                pose = [x+0.1*(np.random.rand()-1), 0.5, z+0.1*(np.random.rand()-1)]
                 targets.append(pose)
                     
         target = choice(targets)
@@ -508,47 +511,42 @@ class MySimpleReachEnv(gym.Env):
         self.last_distance = np.linalg.norm(np.asarray(list(self.last_pos))-np.asarray(self.target_position), ord=None)
         self.distance = np.linalg.norm(np.asarray(list(self.current_pos))-np.asarray(self.target_position), ord=None)
         # print(self.distance)
-        dd = 0.1
-        if self.distance < dd:
-            r1 = -0.5*self.distance*self.distance
-        else:
-            r1 = -dd*(abs(self.distance)-0.5*dd)
         
-        x=self.current_pos[0]
-        y=self.current_pos[1]
-        z=self.current_pos[2]
-        out=bool(
-            x<self.x_low_obs
-            or x>self.x_high_obs
-            or y<self.y_low_obs
-            or y>self.y_high_obs
-            or z<self.z_low_obs
-            or z>self.z_high_obs
-        )
-        
+        # check shaking
+        shaking = 0
+        if len(self.past_distance)>=10:
+            arrow = []
+            for i in range(0,9):
+                arrow.append(0) if self.past_distance[i+1]-self.past_distance[i]>=0 else arrow.append(1)
+            for j in range(0,8):
+                if arrow[j] != arrow[j+1]:
+                    shaking += 1
+        reward = 0
+        reward -= shaking*0.005
         # success
         is_success = False
         if self.distance<self.distance_threshold:
             self.terminated=True
             is_success = True
             self.success_counter += 1
-            reward = 10
+            reward += 10
         elif self.step_counter>self.max_steps_one_episode:
             self.terminated=True
-            reward = -0.01*self.distance
+            reward += -0.01*self.distance
         elif self.collided:
             self.terminated=True
-            reward = -10
+            reward += -10
         # this episode goes on
         else:
             self.terminated=False
-            reward = -0.01*self.distance
+            reward += -0.01*self.distance
 
         info={'step':self.step_counter,
               'distance':self.distance,
               'terminated':self.terminated,
               'reward':reward,
-              'collided':self.collided, 
+              'collided':self.collided,
+              'shaking':shaking, 
               'is_success': is_success}
         
         if self.terminated: 
@@ -561,13 +559,16 @@ class MySimpleReachEnv(gym.Env):
         self.state[6:9] = np.asarray(self.target_position)-np.asarray(self.current_pos)
         self.state[9:13] = self.current_orn
         self.distance = np.linalg.norm(np.asarray(list(self.current_pos))-np.asarray(self.target_position), ord=None)
+        self.past_distance.append(self.distance)
+        if len(self.past_distance)>10:
+            self.past_distance.popleft()
         self.state[13] = self.distance
         return{
             'position': self.state,
             'indicator': self.indicator
         }
     
-    def _set_lidar_cylinder(self, ray_min=0.02, ray_max=0.4, ray_num_ver=6, ray_num_hor=12, render=True):
+    def _set_lidar_cylinder(self, ray_min=0.02, ray_max=0.4, ray_num_ver=6, ray_num_hor=12, render=False):
         ray_froms = []
         ray_tops = []
         frame = quaternion_matrix(self.current_orn)

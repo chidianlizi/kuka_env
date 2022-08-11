@@ -286,7 +286,7 @@ class MySimpleReachEnv(gym.Env):
         targets = []
         for i, x in enumerate([-0.25, 0.25]):
             for j, z in enumerate([0.85, 1.35]):        
-                pose = [x+0.1*(np.random.rand()-1), 0.4, z+0.1*(np.random.rand()-1)]
+                pose = [x+0.1*(np.random.rand()-1), 0.5, z+0.1*(np.random.rand()-1)]
                 targets.append(pose)
                     
         target = choice(targets)
@@ -421,7 +421,7 @@ class MySimpleReachEnv(gym.Env):
         # print (action)
         # set a coefficient to prevent the action from being too large
         self.action = action
-        dv = 0.015
+        dv = 0.02
         dx = action[0]*dv
         dy = action[1]*dv
         dz = action[2]*dv
@@ -567,7 +567,7 @@ class MySimpleReachEnv(gym.Env):
             'indicator': self.indicator
         }
     
-    def _set_lidar_cylinder(self, ray_min=0.02, ray_max=0.4, ray_num_ver=6, ray_num_hor=12, render=True):
+    def _set_lidar_cylinder(self, ray_min=0.02, ray_max=0.4, ray_num_ver=6, ray_num_hor=12, render=False):
         ray_froms = []
         ray_tops = []
         frame = quaternion_matrix(self.current_orn)
